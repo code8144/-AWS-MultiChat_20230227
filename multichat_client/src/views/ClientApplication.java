@@ -2,7 +2,20 @@ package views;
 
 import java.awt.CardLayout;
 import java.awt.EventQueue;
+import java.awt.event.KeyAdapter;
+import java.awt.event.KeyEvent;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.io.PrintWriter;
+import java.net.ConnectException;
+import java.net.Socket;
+import java.net.UnknownHostException;
+import java.util.List;
+import java.util.Map;
 
+import javax.swing.DefaultListModel;
 import javax.swing.JButton;
 import javax.swing.JFrame;
 import javax.swing.JList;
@@ -15,38 +28,42 @@ import javax.swing.JTextField;
 import com.google.gson.Gson;
 
 import dto.request.RequestDto;
+import lombok.Getter;
+import lombok.Setter;
 
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
-import java.io.IOException;
-import java.io.OutputStream;
-import java.io.PrintWriter;
-import java.net.ConnectException;
-import java.net.Socket;
-import java.net.UnknownHostException;
-import java.awt.event.KeyAdapter;
-import java.awt.event.KeyEvent;
-
+@Getter
 public class ClientApplication extends JFrame {
 
 	private static final long serialVersionUID = 1L;
-	
+	private static ClientApplication instance;
+
 	private Gson gson;
 	private Socket socket;
-	
+
 	private JPanel mainPanel;
 	private CardLayout mainCard;
-	
+
 	private JTextField usernameField;
-	
+
 	private JTextField sendMessageField;
-	
+
+	@Setter
+	private List<Map<String, String>> roomInfoList;
+	private DefaultListModel<String> roomNameListModel;
+	private DefaultListModel<String> usernameListModel;
+
+	public static ClientApplication getInstance() {
+		if (instance == null) {
+			instance = new ClientApplication();
+		}
+		return instance;
+	}
 
 	public static void main(String[] args) {
 		EventQueue.invokeLater(new Runnable() {
 			public void run() {
 				try {
-					ClientApplication frame = new ClientApplication();
+					ClientApplication frame = ClientApplication.getInstance();
 					frame.setVisible(true);
 				} catch (Exception e) {
 					e.printStackTrace();
@@ -55,133 +72,162 @@ public class ClientApplication extends JFrame {
 		});
 	}
 
-	public ClientApplication() {
-		/*>===============< init >>===============*/
+	private ClientApplication() {
+		/* >===============< init >>=============== */
 		gson = new Gson();
 		try {
 			socket = new Socket("127.0.0.1", 9090);
 			ClientRecive clientRecive = new ClientRecive(socket);
 			clientRecive.start();
-			
+
 		} catch (UnknownHostException e1) {
 			e1.printStackTrace();
-			
+
 		} catch (ConnectException e1) {
-			JOptionPane.showMessageDialog(this, "서버에 접속 할 수 없습니다.", "접속오류", JOptionPane.ERROR_MESSAGE);	
+			JOptionPane.showMessageDialog(this, "서버에 접속 할 수 없습니다.", "접속오류", JOptionPane.ERROR_MESSAGE);
 			System.exit(0);
 		} catch (IOException e1) {
 			e1.printStackTrace();
 		}
-		
-		/*>===============< frame set >>===============*/
-		
+
+		/* >===============< frame set >>=============== */
+
 		setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 		setBounds(0, 0, 480, 800);
-		
-		/*>===============< panels >>===============*/
+
+		/* >===============< panels >>=============== */
 		mainPanel = new JPanel();
-		
+
 		JPanel loginPanel = new JPanel();
 		JPanel roomListPanel = new JPanel();
 		JPanel roomPanel = new JPanel();
-		
-		/*>===============< layout >>===============*/
-		
+
+		/* >===============< layout >>=============== */
+
 		mainCard = new CardLayout();
-		
+
 		mainPanel.setLayout(mainCard);
 		loginPanel.setLayout(null);
 		roomListPanel.setLayout(null);
 		roomPanel.setLayout(null);
-		setLocationRelativeTo(null); //실행창 가운데 정렬
-		
-		/*>===============< panel set >>===============*/
-		
+		setLocationRelativeTo(null); // 실행창 가운데 정렬
+
+		/* >===============< panel set >>=============== */
+
 		setContentPane(mainPanel);
 		mainPanel.add(loginPanel, "loginPanel");
 		mainPanel.add(roomListPanel, "roomListPanel");
 		mainPanel.add(roomPanel, "roomPanel");
-		
-		/*>===============< login panel >>===============*/
-		
+
+		/* >===============< login panel >>=============== */
+
 		JButton enterButton = new JButton("접속하기");
-		
+
 		usernameField = new JTextField();
 		usernameField.addKeyListener(new KeyAdapter() {
 			@Override
 			public void keyPressed(KeyEvent e) {
-				if(e.getKeyCode() == KeyEvent.VK_ENTER) {
-					enterButton.doClick(); // 클릭한거와 같음
+				if (e.getKeyCode() == KeyEvent.VK_ENTER) {
+					RequestDto<String> usernameCheckReqDto = new RequestDto<String>("usernameCheck",
+							usernameField.getText());
+					sendRequest(usernameCheckReqDto);
 				}
 			}
 		});
-		
-		
+
 		usernameField.setBounds(67, 467, 328, 51);
 		loginPanel.add(usernameField);
 		usernameField.setColumns(10);
-		
+
 		enterButton.addMouseListener(new MouseAdapter() {
 			@Override
 			public void mouseClicked(MouseEvent e) {
-				RequestDto<String> usernameCheckReqDto = 
-						new RequestDto<String>("usernameCheck", usernameField.getText());
+				RequestDto<String> usernameCheckReqDto = new RequestDto<String>("usernameCheck",
+						usernameField.getText());
 				sendRequest(usernameCheckReqDto);
 			}
 		});
 		enterButton.setBounds(67, 528, 328, 51);
 		loginPanel.add(enterButton);
-		
-		/*>===============< roomList panel >>===============*/
-		
+
+		/* >===============< roomList panel >>=============== */
+
 		JScrollPane roomListScroll = new JScrollPane();
 		roomListScroll.setBounds(119, 0, 335, 751);
 		roomListPanel.add(roomListScroll);
-		
-		JList roomList = new JList();  
+
+		roomNameListModel = new DefaultListModel<String>();
+		JList roomList = new JList(roomNameListModel);
+		roomList.addMouseListener(new MouseAdapter() {
+			@Override
+			public void mouseClicked(MouseEvent e) {
+				if(e.getClickCount() == 2) {
+					int selectedIndex = roomList.getSelectedIndex();
+					RequestDto<Map<String, String>> requestDto = 
+							new RequestDto<Map<String, String>>("enterRoom", roomInfoList.get(selectedIndex));	
+					sendRequest(requestDto);
+				}
+			}
+		});
 		roomListScroll.setViewportView(roomList);
-		
+
 		JButton createRoomButton = new JButton("방생성");
+		createRoomButton.addMouseListener(new MouseAdapter() {
+			@Override
+			public void mouseClicked(MouseEvent e) {
+				String roomName = null;
+				while (true) {
+					roomName = JOptionPane.showInputDialog(null, "방 제목을 입력하세요.", "방 생성", JOptionPane.PLAIN_MESSAGE);
+					if (!roomName.isBlank()) {
+						break;
+					}
+					JOptionPane.showMessageDialog(null, "공백은 사용 할 수 없습니다.", "방 생성 오류", JOptionPane.ERROR_MESSAGE);
+				}
+				RequestDto<String> requestDto = new RequestDto<String>("createRoom", roomName);
+				sendRequest(requestDto);
+			}
+		});
 		createRoomButton.setBounds(12, 10, 97, 96);
 		roomListPanel.add(createRoomButton);
-		
+
 		JScrollPane joinUserListScroll = new JScrollPane();
 		joinUserListScroll.setBounds(0, 0, 369, 76);
 		roomPanel.add(joinUserListScroll);
 		
-		JList joinUserList = new JList();
+		usernameListModel = new DefaultListModel<String>();
+		JList joinUserList = new JList(usernameListModel);
 		joinUserListScroll.setViewportView(joinUserList);
-		
+
 		JButton roomExitButton = new JButton("나가기");
 		roomExitButton.setBounds(368, 0, 86, 76);
 		roomPanel.add(roomExitButton);
-		
+
 		JScrollPane chattingContentScroll = new JScrollPane();
 		chattingContentScroll.setBounds(0, 76, 454, 607);
 		roomPanel.add(chattingContentScroll);
-		
+
 		JTextArea chattingContent = new JTextArea();
 		chattingContentScroll.setViewportView(chattingContent);
-		
+
 		sendMessageField = new JTextField();
 		sendMessageField.setBounds(0, 682, 364, 69);
 		roomPanel.add(sendMessageField);
 		sendMessageField.setColumns(10);
-		
+
 		JButton sendButton = new JButton("전송");
 		sendButton.setBounds(362, 682, 92, 69);
 		roomPanel.add(sendButton);
-		
+
 	}
-	
+
 	private void sendRequest(RequestDto<?> requestDto) {
-		String reqJson = gson.toJson(requestDto);
+		String reqJson = gson.toJson(requestDto); // reqJson에 requestDto를 toJson을 써서 Json형식으로 바꿔서 담아줌
 		OutputStream outputStream = null;
 		PrintWriter printWriter = null;
 		try {
 			outputStream = socket.getOutputStream();
 			printWriter = new PrintWriter(socket.getOutputStream(), true);
-			printWriter.println(reqJson);
+			printWriter.println(reqJson); // 클라이언트에서 reqJson을 서버로 보내줌
 			System.out.println("클라이언트 -> 서버 : " + reqJson);
 		} catch (IOException e) {
 			e.printStackTrace();

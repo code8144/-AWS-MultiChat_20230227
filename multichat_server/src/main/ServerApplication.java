@@ -9,7 +9,7 @@ import javax.swing.JFrame;
 public class ServerApplication {
 	
 	public static void main(String[] args) {
-		JFrame serverFrame = new JFrame("서버");
+		JFrame serverFrame = new JFrame("서버");	//서버 창
 		serverFrame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 		serverFrame.setSize(300, 300);
 		serverFrame.setVisible(true);
@@ -18,7 +18,7 @@ public class ServerApplication {
 			ServerSocket serverSocket = new ServerSocket(9090);
 			
 			while(true) {
-				Socket socket = serverSocket.accept();
+				Socket socket = serverSocket.accept();	//소켓을 생성하여 서버 소켓과 통신
 				ConnectedSocket connectedSocket = new ConnectedSocket(socket);
 				connectedSocket.start();
 			}
